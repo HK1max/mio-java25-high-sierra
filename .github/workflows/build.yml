@@ -1,1 +1,68 @@
+name: Compila Java 25 per High Sierra
 
+on:
+  workflow_dispatch:
+
+jobs:
+  build-java:
+    runs-on: macos-13
+    timeout-minutes: 90
+
+    steps:
+
+      # ── 1. Installa Boot JDK 24 (richiesto per compilare JDK 25) ──────────
+      - name: Installa Boot JDK 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      # ── 2. Scarica esattamente OpenJDK 25 GA (tag ufficiale jdk-25-ga) ────
+      - name: Scarica sorgenti OpenJDK 25 GA
+        run: |
+          git clone --depth 1 --branch jdk-25-ga https://github.com/openjdk/jdk.git
+          echo "Sorgenti OpenJDK 25 GA scaricati."
+
+      # ── 3. Installa dipendenze ─────────────────────────────────────────────
+      - name: Installa dipendenze (Homebrew)
+        run: |
+          brew install autoconf freetype
+
+      # ── 4. Patch anti-chkstk_darwin e target 10.13 ────────────────────────
+      - name: Applica patch flag di compilazione
+        run: |
+          cd jdk
+          sed -i '' \
+            's/-mmacosx-version-min=\$[{]MACOSX_VERSION_MIN[}]/-mmacosx-version-min=10.13 -fno-stack-check/g' \
+            make/autoconf/flags-cflags.m4
+          sed -i '' \
+            's/MACOSX_VERSION_MIN=.*/MACOSX_VERSION_MIN=10.13/g' \
+            make/autoconf/flags.m4
+          echo "Patch applicata."
+
+      # ── 5. Configura ───────────────────────────────────────────────────────
+      - name: Configura (./configure)
+        run: |
+          cd jdk
+          bash configure \
+            --with-boot-jdk=$JAVA_HOME \
+            --disable-warnings-as-errors \
+            --with-debug-level=release
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+
+      # ── 6. Compila ─────────────────────────────────────────────────────────
+      - name: Compila (make images)
+        run: |
+          cd jdk
+          make images
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+
+      # ── 7. Carica artefatto ────────────────────────────────────────────────
+      - name: Carica artefatto JDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-25-high-sierra
+          path: jdk/build/*/images/jdk
+          retention-days: 7
