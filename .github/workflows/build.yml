@@ -30,7 +30,7 @@ jobs:
           cd jdk
           # Configurazione pulita forzata per Mac Intel x86_64
           bash configure \
-            --with-openjdk-target=x86_64-apple-darwin \
+            --openjdk-target=x86_64-apple-darwin \
             --with-boot-jdk=$JAVA_HOME \
             --disable-warnings-as-errors \
             --with-debug-level=release
