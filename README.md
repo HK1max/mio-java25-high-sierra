@@ -1,1 +1,70 @@
-# mio-java25-high-sierra
+name: Compila Java 25 per High Sierra
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-java:
+    runs-on: macos-13
+
+    steps:
+
+      # ── 1. Scarica i sorgenti ufficiali di OpenJDK 25 ──────────────────────
+      - name: Scarica sorgenti OpenJDK 25
+        run: |
+          git clone --depth 1 https://github.com/openjdk/jdk.git
+          echo "Sorgenti scaricati con successo."
+
+      # ── 2. Installa le dipendenze necessarie per la compilazione ───────────
+      - name: Installa dipendenze (Homebrew)
+        run: |
+          brew install autoconf freetype
+
+      # ── 3. Patch: corregge il flag di versione minima di macOS ─────────────
+      #    Questo è il cuore del backporting:
+      #    - Forza il target a macOS 10.13 (High Sierra)
+      #    - Aggiunge -fno-stack-check per evitare l'errore ___chkstk_darwin
+      - name: Applica patch flag di compilazione
+        run: |
+          cd jdk
+
+          # Patch su flags-cflags.m4: imposta versione min e disabilita stack-check
+          sed -i '' \
+            's/-mmacosx-version-min=\$[{]MACOSX_VERSION_MIN[}]/-mmacosx-version-min=10.13 -fno-stack-check/g' \
+            make/autoconf/flags-cflags.m4
+
+          # Patch su flags.m4: forza il target di deploy a 10.13
+          sed -i '' \
+            's/MACOSX_VERSION_MIN=.*/MACOSX_VERSION_MIN=10.13/g' \
+            make/autoconf/flags.m4
+
+          echo "Patch applicata con successo."
+
+      # ── 4. Configura l'ambiente di compilazione ────────────────────────────
+      - name: Configura (./configure)
+        run: |
+          cd jdk
+          bash configure \
+            --with-macosx-version-max=10.13 \
+            --with-macosx-version-min=10.13 \
+            --with-boot-jdk=$JAVA_HOME \
+            --disable-warnings-as-errors \
+            --with-debug-level=release
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+
+      # ── 5. Compila ─────────────────────────────────────────────────────────
+      - name: Compila (make images)
+        run: |
+          cd jdk
+          make images CONF=macosx-x86_64-server-release
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+
+      # ── 6. Carica il JDK compilato come artefatto scaricabile ──────────────
+      - name: Carica artefatto JDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-25-high-sierra
+          path: jdk/build/*/images/jdk
+          retention-days: 7
